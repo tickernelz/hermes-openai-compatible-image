@@ -626,6 +626,80 @@ def test_shell_installer_honors_explicit_hermes_bin_override(tmp_path):
     assert captured.read_text() == str(hermes_bin)
 
 
+def test_shell_installer_installs_bootstrap_deps_in_temp_venv_not_runtime(tmp_path):
+    source_dir = tmp_path / "source"
+    plugin_dir = source_dir / "openai-compatible-image"
+    scripts_dir = source_dir / "scripts"
+    runtime_log = tmp_path / "runtime-python.log"
+    bootstrap_log = tmp_path / "bootstrap-python.log"
+    captured = tmp_path / "captured.txt"
+    plugin_dir.mkdir(parents=True)
+    scripts_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("# plugin\n")
+    (scripts_dir / "install.py").write_text("# fake installer\n")
+    fake_runtime_python = tmp_path / "runtime-python"
+    fake_runtime_python.write_text(
+        dedent(
+            f"""\
+            #!/usr/bin/env bash
+            printf '%s\\n' "runtime:$*" >> {str(runtime_log)!r}
+            if [ "${{1:-}}" = "-m" ] && [ "${{2:-}}" = "pip" ]; then
+              echo runtime-pip-must-not-run >&2
+              exit 88
+            fi
+            if [ "${{1:-}}" = "-m" ] && [ "${{2:-}}" = "venv" ]; then
+              venv_dir="$3"
+              mkdir -p "$venv_dir/bin"
+              cat > "$venv_dir/bin/python" <<'PYSH'
+#!/usr/bin/env bash
+printf '%s\n' "bootstrap:$*" >> {str(bootstrap_log)!r}
+if [ "${{1:-}}" = "-m" ] && [ "${{2:-}}" = "pip" ]; then
+  exit 0
+fi
+case "${{1:-}}" in
+  */scripts/install.py)
+    printf '%s\n' "$*" > {str(captured)!r}
+    exit 0
+    ;;
+esac
+exit 64
+PYSH
+              chmod +x "$venv_dir/bin/python"
+              exit 0
+            fi
+            exit 64
+            """
+        )
+    )
+    fake_runtime_python.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(ROOT / "install.sh"), "--dry-run", "--profile", "default"],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path / "home"),
+            "HOII_SOURCE_DIR": str(source_dir),
+            "HOII_HERMES_PYTHON": str(fake_runtime_python),
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    runtime_log_text = runtime_log.read_text()
+    bootstrap_log_text = bootstrap_log.read_text()
+    assert "runtime:-m venv" in runtime_log_text
+    assert "runtime:-m pip install" not in runtime_log_text
+    assert "runtime-pip-must-not-run" not in result.stderr
+    assert "bootstrap:-m pip install" in bootstrap_log_text
+    assert "PyYAML>=6" in bootstrap_log_text
+    assert "rich>=13" in bootstrap_log_text
+    assert "prompt_toolkit>=3" in bootstrap_log_text
+    assert str(source_dir / "scripts" / "install.py") in captured.read_text()
+    assert "--hermes-python" in captured.read_text()
+    assert str(fake_runtime_python) in captured.read_text()
+
+
 def test_shell_installer_skips_bootstrap_deps_for_noninteractive_dry_run(tmp_path):
     source_dir = tmp_path / "source"
     plugin_dir = source_dir / "openai-compatible-image"

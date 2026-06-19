@@ -7,6 +7,7 @@ SOURCE_DIR="${HOII_SOURCE_DIR:-}"
 SCRIPT_PATH="${0:-}"
 SELF_DIR=""
 TMP_DIR=""
+BOOTSTRAP_VENV_DIR=""
 BOOTSTRAP_DEPS=("PyYAML>=6" "rich>=13" "prompt_toolkit>=3")
 
 if [ -n "$SCRIPT_PATH" ] && [ "$SCRIPT_PATH" != "bash" ] && [ "$SCRIPT_PATH" != "-" ] && [ -f "$SCRIPT_PATH" ]; then
@@ -14,6 +15,9 @@ if [ -n "$SCRIPT_PATH" ] && [ "$SCRIPT_PATH" != "bash" ] && [ "$SCRIPT_PATH" != 
 fi
 
 cleanup() {
+  if [ -n "$BOOTSTRAP_VENV_DIR" ] && [ -d "$BOOTSTRAP_VENV_DIR" ]; then
+    rm -rf "$BOOTSTRAP_VENV_DIR"
+  fi
   if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
     rm -rf "$TMP_DIR"
   fi
@@ -320,12 +324,56 @@ select_python_bin() {
   printf '%s\n' "python3"
 }
 
-needs_bootstrap_deps() {
-  "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
-import yaml, rich, prompt_toolkit
-PY
+bootstrap_python_for_venv() {
+  local venv_dir="$1"
+  if is_executable "$venv_dir/bin/python"; then
+    printf '%s\n' "$venv_dir/bin/python"
+    return 0
+  fi
+  if is_executable "$venv_dir/Scripts/python.exe"; then
+    printf '%s\n' "$venv_dir/Scripts/python.exe"
+    return 0
+  fi
+  if is_executable "$venv_dir/Scripts/python"; then
+    printf '%s\n' "$venv_dir/Scripts/python"
+    return 0
+  fi
+  return 1
 }
 
+create_bootstrap_venv() {
+  BOOTSTRAP_VENV_DIR="$(mktemp -d)"
+  echo "Creating isolated installer venv with ${PYTHON_BIN}..." >&2
+  if ! "$PYTHON_BIN" -m venv "$BOOTSTRAP_VENV_DIR"; then
+    echo "Error: failed to create isolated installer venv." >&2
+    echo "Python: ${PYTHON_BIN}" >&2
+    echo "Manual fallback:" >&2
+    echo "  ${PYTHON_BIN} -m venv /tmp/hermes-openai-compatible-image-installer-venv" >&2
+    echo "Then install TUI deps in that venv and rerun this installer from the source checkout." >&2
+    return 1
+  fi
+  local bootstrap_python
+  bootstrap_python="$(bootstrap_python_for_venv "$BOOTSTRAP_VENV_DIR")" || {
+    echo "Error: isolated installer venv has no Python executable: ${BOOTSTRAP_VENV_DIR}" >&2
+    return 1
+  }
+  printf '%s\n' "$bootstrap_python"
+}
+
+install_bootstrap_deps() {
+  local bootstrap_python="$1"
+  echo "Installing installer TUI dependencies in isolated venv with ${bootstrap_python}..." >&2
+  if "$bootstrap_python" -m pip install --upgrade --no-cache-dir "${BOOTSTRAP_DEPS[@]}"; then
+    return 0
+  fi
+  echo "Error: failed to install TUI dependencies in isolated installer venv." >&2
+  echo "Hermes runtime Python (unchanged): ${PYTHON_BIN}" >&2
+  echo "Installer Python: ${bootstrap_python}" >&2
+  echo "Manual command:" >&2
+  echo "  ${bootstrap_python} -m pip install 'PyYAML>=6' 'rich>=13' 'prompt_toolkit>=3'" >&2
+  echo "Then rerun this installer." >&2
+  return 1
+}
 should_bootstrap_deps() {
   if [ "${HOII_SKIP_BOOTSTRAP_DEPS:-}" = "1" ]; then
     return 1
@@ -347,33 +395,16 @@ should_bootstrap_deps() {
   return 0
 }
 
-install_bootstrap_deps() {
-  if needs_bootstrap_deps; then
-    return 0
-  fi
-  echo "Installing installer TUI dependencies with ${PYTHON_BIN}..." >&2
-  if "$PYTHON_BIN" -m pip install --upgrade --no-cache-dir "${BOOTSTRAP_DEPS[@]}"; then
-    return 0
-  fi
-  if "$PYTHON_BIN" -m pip install --user --upgrade --no-cache-dir "${BOOTSTRAP_DEPS[@]}"; then
-    return 0
-  fi
-  echo "Error: failed to install TUI dependencies." >&2
-  echo "Python: ${PYTHON_BIN}" >&2
-  echo "Manual command:" >&2
-  echo "  ${PYTHON_BIN} -m pip install 'PyYAML>=6' 'rich>=13' 'prompt_toolkit>=3'" >&2
-  echo "Then rerun this installer." >&2
-  return 1
-}
-
 tty_available() {
   [ -e /dev/tty ] || return 1
   { : < /dev/tty; } 2>/dev/null
 }
 
 run_installer() {
+  local run_python="$PYTHON_BIN"
   if should_bootstrap_deps "$@"; then
-    install_bootstrap_deps
+    run_python="$(create_bootstrap_venv)"
+    install_bootstrap_deps "$run_python"
   fi
   local installer_args=(
     --source-dir "$SRC_DIR"
@@ -383,11 +414,11 @@ run_installer() {
     "$@"
   )
   if [ -t 0 ]; then
-    exec "$PYTHON_BIN" "$SRC_DIR/scripts/install.py" "${installer_args[@]}"
+    "$run_python" "$SRC_DIR/scripts/install.py" "${installer_args[@]}"
   elif tty_available; then
-    exec "$PYTHON_BIN" "$SRC_DIR/scripts/install.py" "${installer_args[@]}" < /dev/tty
+    "$run_python" "$SRC_DIR/scripts/install.py" "${installer_args[@]}" < /dev/tty
   else
-    exec "$PYTHON_BIN" "$SRC_DIR/scripts/install.py" "${installer_args[@]}"
+    "$run_python" "$SRC_DIR/scripts/install.py" "${installer_args[@]}"
   fi
 }
 

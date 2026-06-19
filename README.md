@@ -57,6 +57,7 @@ The shell wrapper auto-detects Hermes paths before launching the Python installe
 - It separates the profile home from the Hermes runtime Python, inferring Python from `HERMES_BIN`, `$PATH`, small shell launchers that `exec` the real Hermes venv, or `$HERMES_HOME/hermes-agent/venv/bin/python`.
 - `--hermes-bin`, `HERMES_BIN`, or `$PATH` can point at the Hermes launcher.
 - `--hermes-python`, `HOII_HERMES_PYTHON`, or `HERMES_PYTHON` can override runtime Python explicitly.
+- Interactive installer dependencies (`PyYAML`, `Rich`, `prompt_toolkit`) are installed into a temporary isolated installer venv, not into Hermes' runtime venv, so Hermes dependency pins stay untouched.
 
 Restart Hermes CLI/gateway sessions after install so the plugin registry reloads.
 
