@@ -1,0 +1,46 @@
+# Example Hermes config fragment for image_gen/openai-compatible-image.
+# Do not commit real API keys. Prefer api_key_env or providers.<name>.key_env.
+
+plugins:
+  enabled:
+    - image_gen/openai-compatible-image
+
+# Option A: direct OpenAI-compatible image endpoint.
+image_gen:
+  provider: openai-compatible-image
+  preset: auto
+  openai_compatible_image:
+    base_url: https://your-provider.example/v1
+    api_key_env: OPENAI_COMPAT_IMAGE_API_KEY
+    timeout: 240
+    retry:
+      max_attempts: 3
+      backoff_seconds: 2
+      status_codes: [502, 503, 504]
+    presets:
+      auto:
+        display: Default image model
+        model: provider/image-model
+        sizes:
+          landscape: 1536x1024
+          portrait: 1024x1536
+          square: 1024x1024
+        extra_body:
+          output_format: png
+          quality: auto
+
+# Option B: reuse an existing Hermes custom provider.
+# image_gen:
+#   provider: custom:image-provider
+#   preset: auto
+#   openai_compatible_image:
+#     custom_provider: image-provider
+#     presets:
+#       auto:
+#         model: provider/image-model
+#         size: 1024x1024
+#
+# providers:
+#   image-provider:
+#     api: https://your-provider.example/v1
+#     key_env: OPENAI_COMPAT_IMAGE_API_KEY
