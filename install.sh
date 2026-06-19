@@ -3,8 +3,13 @@ set -euo pipefail
 
 REPO_SLUG="${HOII_REPO_SLUG:-tickernelz/hermes-openai-compatible-image}"
 REF="${HOII_REF:-main}"
-SELF_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]:-}"
+SELF_DIR=""
 TMP_DIR=""
+
+if [ -n "$SCRIPT_PATH" ] && [ "$SCRIPT_PATH" != "bash" ] && [ "$SCRIPT_PATH" != "-" ] && [ -f "$SCRIPT_PATH" ]; then
+  SELF_DIR="$(CDPATH= cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
+fi
 
 cleanup() {
   if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
@@ -13,7 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [ -d "$SELF_DIR/openai-compatible-image" ] && [ -f "$SELF_DIR/scripts/install.py" ]; then
+if [ -n "$SELF_DIR" ] && [ -d "$SELF_DIR/openai-compatible-image" ] && [ -f "$SELF_DIR/scripts/install.py" ]; then
   SRC_DIR="$SELF_DIR"
 else
   TMP_DIR="$(mktemp -d)"
