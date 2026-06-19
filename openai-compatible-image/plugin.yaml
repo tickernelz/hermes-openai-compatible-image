@@ -1,5 +1,5 @@
 name: openai-compatible-image
-version: "0.2.0"
+version: "0.2.1"
 description: Generic OpenAI-compatible preset-driven image generation backend for Hermes image_gen, with custom-provider aliases.
 author: tickernelz
 kind: backend
