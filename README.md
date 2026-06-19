@@ -2,7 +2,7 @@
 
 # Hermes OpenAI-Compatible Image Provider
 
-A Hermes `image_gen` backend for services that expose an OpenAI-compatible `POST /v1/images/generations` API. It supports Hermes `providers:` reuse, custom-provider aliases like `custom:lokal_sub2api`, named presets, retries, URL or base64 outputs, and local cache storage.
+A Hermes `image_gen` backend for services that expose an OpenAI-compatible `POST /v1/images/generations` API. It supports Hermes `providers:` reuse, custom-provider aliases like `custom:my_image_api`, named presets, retries, URL or base64 outputs, and local cache storage.
 
 ## Install
 
@@ -29,13 +29,13 @@ Dry-run through the same TUI:
 curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.2.0/install.sh | bash -s -- --dry-run
 ```
 
-Noninteractive / CI install still works:
+Noninteractive / CI install for a known existing Hermes provider:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.2.0/install.sh | bash -s -- \
   --yes --all-profiles \
-  --custom-provider lokal_sub2api \
-  --model gpt-image-2
+  --custom-provider my_image_api \
+  --model provider/image-model
 ```
 
 New endpoint with API key written to each selected profile `.env`:
@@ -49,6 +49,14 @@ curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible
   --api-key 'sk-...' \
   --model provider/image-model
 ```
+
+The shell wrapper auto-detects Hermes paths before launching the Python installer:
+
+- `--hermes-home` / `HERMES_HOME` still win when supplied.
+- Otherwise it asks `hermes config path` from the detected `hermes` launcher to find the profile base.
+- It separates the profile home from the Hermes runtime Python, inferring Python from `HERMES_BIN`, `$PATH`, small shell launchers that `exec` the real Hermes venv, or `$HERMES_HOME/hermes-agent/venv/bin/python`.
+- `--hermes-bin`, `HERMES_BIN`, or `$PATH` can point at the Hermes launcher.
+- `--hermes-python`, `HOII_HERMES_PYTHON`, or `HERMES_PYTHON` can override runtime Python explicitly.
 
 Restart Hermes CLI/gateway sessions after install so the plugin registry reloads.
 
@@ -68,29 +76,29 @@ plugins:
     - image_gen/openai-compatible-image
 
 image_gen:
-  provider: custom:lokal_sub2api
+  provider: custom:my_image_api
   preset: auto
   openai_compatible_image:
-    custom_provider: lokal_sub2api
-    api_key_env: LOKAL_SUB2API_API_KEY
+    custom_provider: my_image_api
+    api_key_env: MY_IMAGE_API_KEY
     presets:
       auto:
-        model: gpt-image-2
+        model: provider/image-model
         sizes:
           landscape: 1536x1024
           portrait: 1024x1536
           square: 1024x1024
 
 providers:
-  lokal_sub2api:
-    api: http://localhost:62173/v1
-    key_env: LOKAL_SUB2API_API_KEY
+  my_image_api:
+    api: https://provider.example/v1
+    key_env: MY_IMAGE_API_KEY
 ```
 
 And `.env` gets the secret:
 
 ```env
-LOKAL_SUB2API_API_KEY=<redacted>
+MY_IMAGE_API_KEY=<redacted>
 ```
 
 ## Features

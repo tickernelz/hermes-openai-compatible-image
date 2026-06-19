@@ -6,6 +6,7 @@ import subprocess
 import sys
 import types
 from pathlib import Path
+from textwrap import dedent
 from types import SimpleNamespace
 
 import yaml
@@ -105,13 +106,13 @@ def load_plugin(monkeypatch, tmp_path, cfg=None):
 def test_registers_custom_provider_aliases(monkeypatch, tmp_path):
     cfg = {
         "image_gen": {
-            "provider": "custom:lokal_sub2api",
+            "provider": "custom:sample_image_api",
             "preset": "auto",
             "openai_compatible_image": {
                 "presets": {"auto": {"model": "gpt-image-2", "size": "1024x1024"}}
             },
         },
-        "providers": {"lokal_sub2api": {"api": "http://localhost:62173/v1", "api_key": "secret"}},
+        "providers": {"sample_image_api": {"api": "https://images.example/v1", "api_key": "secret"}},
     }
     mod = load_plugin(monkeypatch, tmp_path, cfg)
 
@@ -130,7 +131,7 @@ def test_registers_custom_provider_aliases(monkeypatch, tmp_path):
     mod.register(ctx)
 
     names = {provider.name for provider in ctx.providers}
-    assert {"openai-compatible-image", "custom:lokal_sub2api", "lokal_sub2api"} <= names
+    assert {"openai-compatible-image", "custom:sample_image_api", "sample_image_api"} <= names
     assert ctx.commands and ctx.commands[0]["name"] == "image-preset"
 
 
@@ -289,17 +290,17 @@ def test_interactive_installer_selects_custom_provider_and_model_from_v1_models(
         yaml.safe_dump(
             {
                 "providers": {
-                    "lokal_sub2api": {
-                        "name": "Local Sub2API",
-                        "api": "http://localhost:62173/v1",
-                        "key_env": "LOKAL_SUB2API_API_KEY",
+                    "sample_image_api": {
+                        "name": "Sample Image API",
+                        "api": "https://images.example/v1",
+                        "key_env": "SAMPLE_IMAGE_API_KEY",
                     }
                 }
             },
             sort_keys=False,
         )
     )
-    monkeypatch.setenv("LOKAL_SUB2API_API_KEY", "secret-from-env")
+    monkeypatch.setenv("SAMPLE_IMAGE_API_KEY", "secret-from-env")
     monkeypatch.setattr(mod, "fetch_models_from_v1", lambda provider, timeout=10.0: ["gpt-image-2", "flux-kontext"])
     monkeypatch.setattr(mod, "provider_choices_from_hermes", lambda *args, **kwargs: [])
 
@@ -333,7 +334,7 @@ def test_interactive_installer_selects_custom_provider_and_model_from_v1_models(
     )
     ui = FakeTui([
         "default",          # target profiles
-        "Local Sub2API",    # provider
+        "Sample Image API", # provider
         "gpt-image-2",      # model from /v1/models
         None,               # API key env var default
         None,               # confirm install
@@ -342,15 +343,15 @@ def test_interactive_installer_selects_custom_provider_and_model_from_v1_models(
     profiles = mod.apply_interactive_choices(args, ui=ui)
 
     assert profiles == ["default"]
-    assert args.custom_provider == "lokal_sub2api"
+    assert args.custom_provider == "sample_image_api"
     assert args.model == "gpt-image-2"
-    assert args.api_key_env == "LOKAL_SUB2API_API_KEY"
+    assert args.api_key_env == "SAMPLE_IMAGE_API_KEY"
     assert args.api_key == "secret-from-env"
     assert any(event[0] == "provider_table" for event in ui.events)
     model_selects = [event for event in ui.events if event[0] == "select" and "model" in event[1].lower()]
     assert model_selects and model_selects[0][2] == ("gpt-image-2", "flux-kontext")
     mod.write_profile_env(home, args)
-    assert "LOKAL_SUB2API_API_KEY=secret-from-env" in (home / ".env").read_text()
+    assert "SAMPLE_IMAGE_API_KEY=secret-from-env" in (home / ".env").read_text()
 
 
 def test_interactive_installer_prompts_api_key_and_writes_profile_env(monkeypatch, tmp_path):
@@ -498,3 +499,171 @@ def test_yes_mode_stays_noninteractive(tmp_path):
     assert "OpenAI-compatible image installer" not in result.stdout
     cfg = yaml.safe_load((home / "config.yaml").read_text())
     assert cfg["image_gen"]["provider"] == "custom:foo"
+
+
+def test_shell_installer_detects_hermes_home_and_python_from_launcher(tmp_path):
+    hermes_home = tmp_path / "profile-home"
+    config_path = hermes_home / "config.yaml"
+    runtime_bin = tmp_path / "runtime" / "venv" / "bin"
+    path_bin = tmp_path / "path-bin"
+    captured = tmp_path / "captured.txt"
+    source_dir = tmp_path / "source"
+    plugin_dir = source_dir / "openai-compatible-image"
+    scripts_dir = source_dir / "scripts"
+    runtime_bin.mkdir(parents=True)
+    path_bin.mkdir()
+    plugin_dir.mkdir(parents=True)
+    scripts_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("# plugin\n")
+    (scripts_dir / "install.py").write_text(
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        f"Path({str(captured)!r}).write_text('\\n'.join([\n"
+        "    sys.executable,\n"
+        "    os.environ.get('HERMES_HOME', ''),\n"
+        "    os.environ.get('HOII_HERMES_PYTHON', ''),\n"
+        "    os.environ.get('HERMES_BIN', ''),\n"
+        "    'ARGS=' + ' '.join(sys.argv[1:]),\n"
+        "]))\n"
+    )
+    python = runtime_bin / "python"
+    python.write_text(
+        "#!/usr/bin/env bash\n"
+        "exec \"$REAL_PYTHON\" \"$@\"\n"
+    )
+    python.chmod(0o755)
+    real_hermes = runtime_bin / "hermes"
+    real_hermes.write_text(
+        dedent(
+            f"""\
+            #!/usr/bin/env bash
+            if [ "${{1:-}}" = "config" ] && [ "${{2:-}}" = "path" ]; then
+              echo {str(config_path)!r}
+              exit 0
+            fi
+            exit 1
+            """
+        )
+    )
+    real_hermes.chmod(0o755)
+    wrapper = path_bin / "hermes"
+    wrapper.write_text(
+        f"#!/usr/bin/env bash\nHERMES_HOME=/ignored exec {str(real_hermes)!r} \"$@\"\n"
+    )
+    wrapper.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(ROOT / "install.sh"), "--yes", "--dry-run", "--profile", "default"],
+        env={
+            "PATH": f"{path_bin}:/usr/bin:/bin",
+            "HOME": str(tmp_path / "home"),
+            "REAL_PYTHON": sys.executable,
+            "HOII_SOURCE_DIR": str(source_dir),
+            "HOII_SKIP_BOOTSTRAP_DEPS": "1",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    captured_lines = captured.read_text().splitlines()
+    assert captured_lines[0] == sys.executable
+    assert captured_lines[1] == str(hermes_home)
+    assert captured_lines[2] == str(python)
+    assert captured_lines[3] == str(wrapper)
+    assert "--hermes-home" in captured_lines[4]
+    assert str(hermes_home) in captured_lines[4]
+    assert "--hermes-python" in captured_lines[4]
+    assert str(python) in captured_lines[4]
+    assert "--hermes-bin" in captured_lines[4]
+    assert str(wrapper) in captured_lines[4]
+    assert "Installing installer TUI dependencies" not in result.stderr
+
+
+def test_shell_installer_honors_explicit_hermes_bin_override(tmp_path):
+    hermes_home = tmp_path / "explicit-home"
+    runtime_bin = tmp_path / "runtime" / "venv" / "bin"
+    source_dir = tmp_path / "source"
+    captured = tmp_path / "captured.txt"
+    runtime_bin.mkdir(parents=True)
+    (source_dir / "openai-compatible-image").mkdir(parents=True)
+    (source_dir / "scripts").mkdir(parents=True)
+    (source_dir / "openai-compatible-image" / "__init__.py").write_text("# plugin\n")
+    (source_dir / "scripts" / "install.py").write_text(
+        f"import os, pathlib\npathlib.Path({str(captured)!r}).write_text(os.environ.get('HERMES_BIN', ''))\n"
+    )
+    python = runtime_bin / "python"
+    python.write_text(f"#!/usr/bin/env bash\nexec {str(sys.executable)!r} \"$@\"\n")
+    python.chmod(0o755)
+    hermes_bin = runtime_bin / "hermes"
+    hermes_bin.write_text(
+        f"#!/usr/bin/env bash\n[ \"${{1:-}}\" = config ] && [ \"${{2:-}}\" = path ] && echo {str(hermes_home / 'config.yaml')!r}\n"
+    )
+    hermes_bin.chmod(0o755)
+
+    subprocess.run(
+        [
+            "bash",
+            str(ROOT / "install.sh"),
+            "--yes",
+            "--dry-run",
+            "--hermes-bin",
+            str(hermes_bin),
+            "--profile",
+            "default",
+        ],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path / "home"),
+            "HOII_SOURCE_DIR": str(source_dir),
+            "HOII_SKIP_BOOTSTRAP_DEPS": "1",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert captured.read_text() == str(hermes_bin)
+
+
+def test_shell_installer_skips_bootstrap_deps_for_noninteractive_dry_run(tmp_path):
+    source_dir = tmp_path / "source"
+    plugin_dir = source_dir / "openai-compatible-image"
+    scripts_dir = source_dir / "scripts"
+    captured = tmp_path / "captured.txt"
+    plugin_dir.mkdir(parents=True)
+    scripts_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("# plugin\n")
+    (scripts_dir / "install.py").write_text(
+        f"import pathlib, sys\npathlib.Path({str(captured)!r}).write_text('ran ' + ' '.join(sys.argv[1:]))\n"
+    )
+    fake_python = tmp_path / "fake-python"
+    fake_python.write_text(
+        dedent(
+            f"""\
+            #!/usr/bin/env bash
+            if [ "${{1:-}}" = "-m" ] && [ "${{2:-}}" = "pip" ]; then
+              echo pip-bootstrap-should-not-run >&2
+              exit 99
+            fi
+            exec {str(sys.executable)!r} "$@"
+            """
+        )
+    )
+    fake_python.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(ROOT / "install.sh"), "--yes", "--dry-run", "--profile", "default"],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(tmp_path / "home"),
+            "HOII_SOURCE_DIR": str(source_dir),
+            "HOII_HERMES_PYTHON": str(fake_python),
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert captured.exists()
+    assert "pip-bootstrap-should-not-run" not in result.stderr

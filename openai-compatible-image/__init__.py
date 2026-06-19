@@ -190,7 +190,7 @@ def _normalised_custom_provider(entry: Dict[str, Any], *, fallback_name: str = "
 def _find_custom_provider(cfg: Dict[str, Any], requested: str) -> Optional[Dict[str, Any]]:
     """Resolve ``providers:`` / legacy ``custom_providers:`` entries.
 
-    Supports both ``lokal_sub2api`` and ``custom:lokal_sub2api``. This keeps
+    Supports both ``my_provider`` and ``custom:my_provider``. This keeps
     image generation aligned with Hermes model-provider config instead of
     forcing a second image-specific base_url/api_key block.
     """
@@ -226,7 +226,7 @@ def _image_custom_provider_aliases(cfg: Dict[str, Any]) -> Dict[str, str]:
     """Provider names this plugin should register as aliases.
 
     Hermes core dispatches image_gen calls by exact ``provider.name``. A plugin
-    can therefore support ``image_gen.provider: custom:lokal_sub2api`` without
+    can therefore support ``image_gen.provider: custom:my_provider`` without
     touching Hermes core by registering an alias provider with that exact name.
     """
     aliases: Dict[str, str] = {}

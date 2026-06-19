@@ -164,6 +164,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--source-dir", default=".", help=argparse.SUPPRESS)
     parser.add_argument("--hermes-home", default=os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes"))
     parser.add_argument("--hermes-python", default=os.environ.get("HOII_HERMES_PYTHON") or os.environ.get("HERMES_PYTHON") or "")
+    parser.add_argument("--hermes-bin", default=os.environ.get("HERMES_BIN") or "", help="Hermes CLI launcher used by install.sh for path discovery.")
     parser.add_argument("--profile", action="append", default=[], help="Profile name(s). Repeat or comma-separate. Use 'default' for ~/.hermes.")
     parser.add_argument("--profiles", action="append", default=[], help="Alias for --profile; accepts comma-separated names.")
     parser.add_argument("--all-profiles", action="store_true", help="Install into default plus every existing profile under profiles/.")
@@ -624,7 +625,7 @@ def apply_interactive_choices(args: argparse.Namespace, ui: Any | None = None) -
     default_choice = next(iter(display_map), "Manual endpoint")
     selected = tui.select("OpenAI-compatible image provider", choices, default_choice)
     if selected == "Manual endpoint":
-        base_url = tui.text("OpenAI-compatible base URL", args.base_url or "http://localhost:62173/v1").rstrip("/")
+        base_url = tui.text("OpenAI-compatible base URL", args.base_url or "https://provider.example/v1").rstrip("/")
         name = custom_provider_id(args.custom_provider) or sanitize_provider_id(base_url)
         candidate = ProviderCandidate(name=name, label=name, base_url=base_url, source="manual")
     else:
