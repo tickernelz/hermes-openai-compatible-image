@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_SLUG="${HOII_REPO_SLUG:-tickernelz/hermes-openai-compatible-image}"
-REF="${HOII_REF:-main}"
+REF="${HOII_REF:-v0.1.0}"
 SCRIPT_PATH="${0:-}"
 SELF_DIR=""
 TMP_DIR=""
