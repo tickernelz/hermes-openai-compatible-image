@@ -9,19 +9,19 @@ A Hermes `image_gen` backend for any service that exposes an OpenAI-compatible `
 Inspect first:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.0/install.sh | bash -s -- --dry-run
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash -s -- --dry-run
 ```
 
 Install into the default profile:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.0/install.sh | bash -s -- --yes
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash -s -- --yes
 ```
 
 Install into every existing profile and reuse a Hermes custom provider:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.0/install.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash -s -- \
   --yes --all-profiles \
   --custom-provider lokal_sub2api \
   --model gpt-image-2
@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible
 Install specific profiles:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.0/install.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash -s -- \
   --yes --profile default,work --profile lab \
   --base-url https://provider.example/v1 \
   --api-key-env OPENAI_COMPAT_IMAGE_API_KEY \

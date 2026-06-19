@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_SLUG="${HOII_REPO_SLUG:-tickernelz/hermes-openai-compatible-image}"
-REF="${HOII_REF:-v0.1.0}"
+REF="${HOII_REF:-v0.1.1}"
 SCRIPT_PATH="${0:-}"
 SELF_DIR=""
 TMP_DIR=""
@@ -22,7 +22,7 @@ if [ -n "$SELF_DIR" ] && [ -d "$SELF_DIR/openai-compatible-image" ] && [ -f "$SE
   SRC_DIR="$SELF_DIR"
 else
   TMP_DIR="$(mktemp -d)"
-  ARCHIVE_URL="${HOII_ARCHIVE_URL:-https://github.com/${REPO_SLUG}/archive/refs/heads/${REF}.tar.gz}"
+  ARCHIVE_URL="${HOII_ARCHIVE_URL:-https://github.com/${REPO_SLUG}/archive/${REF}.tar.gz}"
   echo "Downloading ${REPO_SLUG}@${REF}..." >&2
   curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$TMP_DIR" --strip-components=1
   SRC_DIR="$TMP_DIR"
