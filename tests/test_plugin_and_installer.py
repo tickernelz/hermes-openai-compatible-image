@@ -6,6 +6,7 @@ import subprocess
 import sys
 import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -13,6 +14,16 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_FILE = ROOT / "openai-compatible-image" / "__init__.py"
 INSTALLER = ROOT / "scripts" / "install.py"
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"fake-png"
+
+
+def load_installer():
+    module_name = f"installer_test_{id(object())}"
+    spec = importlib.util.spec_from_file_location(module_name, INSTALLER)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def load_plugin(monkeypatch, tmp_path, cfg=None):
@@ -231,3 +242,259 @@ def test_installer_updates_multiple_profiles(tmp_path):
 
     assert (home / "plugins" / "image_gen" / "openai-compatible-image" / "__init__.py").exists()
     assert (home / "profiles" / "work" / "plugins" / "image_gen" / "openai-compatible-image" / "__init__.py").exists()
+
+
+class FakeTui:
+    def __init__(self, answers):
+        self.answers = list(answers)
+        self.events = []
+
+    def _pop(self):
+        if not self.answers:
+            raise AssertionError("FakeTui ran out of answers")
+        return self.answers.pop(0)
+
+    def banner(self, title, subtitle):
+        self.events.append(("banner", title, subtitle))
+
+    def text(self, prompt, default=""):
+        self.events.append(("text", prompt, default))
+        answer = self._pop()
+        return default if answer is None else answer
+
+    def password(self, prompt):
+        self.events.append(("password", prompt))
+        return self._pop()
+
+    def confirm(self, prompt, default=False):
+        self.events.append(("confirm", prompt, default))
+        answer = self._pop()
+        return default if answer is None else bool(answer)
+
+    def select(self, prompt, choices, default=""):
+        self.events.append(("select", prompt, tuple(choices), default))
+        answer = self._pop()
+        return default if answer is None else answer
+
+    def provider_table(self, providers):
+        self.events.append(("provider_table", tuple(p.name for p in providers)))
+
+
+def test_interactive_installer_selects_custom_provider_and_model_from_v1_models(monkeypatch, tmp_path):
+    mod = load_installer()
+    home = tmp_path / "hermes"
+    cfg_path = home / "config.yaml"
+    cfg_path.parent.mkdir(parents=True)
+    cfg_path.write_text(
+        yaml.safe_dump(
+            {
+                "providers": {
+                    "lokal_sub2api": {
+                        "name": "Local Sub2API",
+                        "api": "http://localhost:62173/v1",
+                        "key_env": "LOKAL_SUB2API_API_KEY",
+                    }
+                }
+            },
+            sort_keys=False,
+        )
+    )
+    monkeypatch.setenv("LOKAL_SUB2API_API_KEY", "secret-from-env")
+    monkeypatch.setattr(mod, "fetch_models_from_v1", lambda provider, timeout=10.0: ["gpt-image-2", "flux-kontext"])
+    monkeypatch.setattr(mod, "provider_choices_from_hermes", lambda *args, **kwargs: [])
+
+    args = SimpleNamespace(
+        hermes_home=str(home),
+        source_dir=str(ROOT),
+        profile=[],
+        profiles=[],
+        all_profiles=False,
+        create_profile=False,
+        no_config=False,
+        no_select_provider=False,
+        custom_provider=None,
+        base_url=None,
+        api_key=None,
+        api_key_env=None,
+        model=None,
+        preset="auto",
+        size=None,
+        quality=None,
+        output_format="png",
+        response_format=None,
+        timeout=240,
+        retry_attempts=3,
+        retry_backoff=2.0,
+        dry_run=False,
+        yes=False,
+        interactive=True,
+        prompt_input="",
+        hermes_python="",
+    )
+    ui = FakeTui([
+        "default",          # target profiles
+        "Local Sub2API",    # provider
+        "gpt-image-2",      # model from /v1/models
+        None,               # API key env var default
+        None,               # confirm install
+    ])
+
+    profiles = mod.apply_interactive_choices(args, ui=ui)
+
+    assert profiles == ["default"]
+    assert args.custom_provider == "lokal_sub2api"
+    assert args.model == "gpt-image-2"
+    assert args.api_key_env == "LOKAL_SUB2API_API_KEY"
+    assert args.api_key == "secret-from-env"
+    assert any(event[0] == "provider_table" for event in ui.events)
+    model_selects = [event for event in ui.events if event[0] == "select" and "model" in event[1].lower()]
+    assert model_selects and model_selects[0][2] == ("gpt-image-2", "flux-kontext")
+    mod.write_profile_env(home, args)
+    assert "LOKAL_SUB2API_API_KEY=secret-from-env" in (home / ".env").read_text()
+
+
+def test_interactive_installer_prompts_api_key_and_writes_profile_env(monkeypatch, tmp_path):
+    mod = load_installer()
+    home = tmp_path / "hermes"
+    (home / "profiles" / "work").mkdir(parents=True)
+    monkeypatch.setattr(mod, "fetch_models_from_v1", lambda provider, timeout=10.0: ["gpt-image-2"])
+    monkeypatch.setattr(mod, "provider_choices_from_hermes", lambda *args, **kwargs: [])
+
+    args = SimpleNamespace(
+        hermes_home=str(home),
+        source_dir=str(ROOT),
+        profile=[],
+        profiles=[],
+        all_profiles=False,
+        create_profile=False,
+        no_config=False,
+        no_select_provider=False,
+        custom_provider=None,
+        base_url=None,
+        api_key=None,
+        api_key_env=None,
+        model=None,
+        preset="auto",
+        size=None,
+        quality=None,
+        output_format="png",
+        response_format=None,
+        timeout=240,
+        retry_attempts=3,
+        retry_backoff=2.0,
+        dry_run=False,
+        yes=False,
+        interactive=True,
+        prompt_input="",
+        hermes_python="",
+    )
+    ui = FakeTui([
+        "work",                          # target profile
+        "Manual endpoint",               # provider path
+        "https://img.example/v1",         # base URL
+        "IMG_API_KEY",                   # env var name
+        "super-secret",                  # password
+        "gpt-image-2",                   # model from /v1/models
+        None,                            # confirm install
+    ])
+
+    profiles = mod.apply_interactive_choices(args, ui=ui)
+
+    assert profiles == ["work"]
+    assert args.custom_provider == "img_example"
+    assert args.base_url == "https://img.example/v1"
+    assert args.api_key_env == "IMG_API_KEY"
+    assert args.api_key == "super-secret"
+    assert args.model == "gpt-image-2"
+
+    mod.write_profile_env(home / "profiles" / "work", args)
+    env_text = (home / "profiles" / "work" / ".env").read_text()
+    assert "IMG_API_KEY=super-secret" in env_text
+
+
+def test_interactive_installer_uses_existing_profile_env_for_model_probe(monkeypatch, tmp_path):
+    mod = load_installer()
+    home = tmp_path / "hermes"
+    home.mkdir()
+    (home / "config.yaml").write_text(
+        yaml.safe_dump(
+            {"providers": {"foo": {"api": "https://foo.example/v1", "key_env": "FOO_KEY"}}},
+            sort_keys=False,
+        )
+    )
+    (home / ".env").write_text('FOO_KEY="from-profile-env"\n')
+    seen = {}
+
+    def fake_fetch(provider, timeout=10.0):
+        seen["key"] = provider.resolved_api_key
+        return ["gpt-image-2"]
+
+    monkeypatch.setattr(mod, "fetch_models_from_v1", fake_fetch)
+    monkeypatch.setattr(mod, "provider_choices_from_hermes", lambda *args, **kwargs: [])
+    args = SimpleNamespace(
+        hermes_home=str(home),
+        source_dir=str(ROOT),
+        profile=[],
+        profiles=[],
+        all_profiles=False,
+        create_profile=False,
+        no_config=False,
+        no_select_provider=False,
+        custom_provider=None,
+        base_url=None,
+        api_key=None,
+        api_key_env=None,
+        model=None,
+        preset="auto",
+        size=None,
+        quality=None,
+        output_format="png",
+        response_format=None,
+        timeout=240,
+        retry_attempts=3,
+        retry_backoff=2.0,
+        dry_run=False,
+        yes=False,
+        interactive=True,
+        prompt_input="",
+        hermes_python="",
+    )
+    ui = FakeTui(["default", "foo", "gpt-image-2", None])
+
+    mod.apply_interactive_choices(args, ui=ui)
+
+    assert seen["key"] == "from-profile-env"
+    assert args.api_key is None
+
+
+def test_yes_mode_stays_noninteractive(tmp_path):
+    home = tmp_path / "hermes"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(INSTALLER),
+            "--source-dir",
+            str(ROOT),
+            "--hermes-home",
+            str(home),
+            "--profile",
+            "default",
+            "--yes",
+            "--custom-provider",
+            "foo",
+            "--base-url",
+            "http://localhost:9999/v1",
+            "--api-key-env",
+            "FOO_KEY",
+            "--model",
+            "gpt-image-2",
+        ],
+        input="",
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "OpenAI-compatible image installer" not in result.stdout
+    cfg = yaml.safe_load((home / "config.yaml").read_text())
+    assert cfg["image_gen"]["provider"] == "custom:foo"
