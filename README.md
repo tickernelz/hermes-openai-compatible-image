@@ -9,7 +9,7 @@ A Hermes `image_gen` backend for services that expose an OpenAI-compatible `POST
 Recommended interactive install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.2.0/install.sh | bash
 ```
 
 The TUI handles the whole setup:
@@ -26,13 +26,13 @@ The TUI handles the whole setup:
 Dry-run through the same TUI:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash -s -- --dry-run
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.2.0/install.sh | bash -s -- --dry-run
 ```
 
 Noninteractive / CI install still works:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.2.0/install.sh | bash -s -- \
   --yes --all-profiles \
   --custom-provider lokal_sub2api \
   --model gpt-image-2
@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible
 New endpoint with API key written to each selected profile `.env`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.1.1/install.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/tickernelz/hermes-openai-compatible-image/v0.2.0/install.sh | bash -s -- \
   --yes --profile default,work \
   --custom-provider my_image_api \
   --base-url https://provider.example/v1 \
